@@ -1,0 +1,20 @@
+#!/bin/sh
+# RebuiltTux pkg - package manager scaffold
+# The implementation will be added in a later development stage.
+
+case "$1" in
+  update|upgrade|search|install|remove|list|info|clean)
+    echo "RebuiltTux pkg: '$1' is not implemented yet."
+    echo "See /usr/share/doc/rebuilttux-kali/pkg/README.md"
+    exit 0
+    ;;
+  "")
+    echo "RebuiltTux pkg"
+    echo "Usage: pkg {update|upgrade|search|install|remove|list|info|clean}"
+    exit 0
+    ;;
+  *)
+    echo "pkg: unknown command: $1" >&2
+    exit 1
+    ;;
+esac
