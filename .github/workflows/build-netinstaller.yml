@@ -53,7 +53,7 @@ jobs:
             --binary-images iso-hybrid \
             --bootappend-live 'boot=live components'
 
-      - name: Configure minimal netinstaller package set
+      - name: Configure minimal package set
         run: |
           mkdir -p build/config/package-lists
           cat > build/config/package-lists/rebuilt-tux-kali.list.chroot <<'EOF'
@@ -66,9 +66,28 @@ jobs:
           sudo
           EOF
 
-      - name: Copy RebuiltTux configuration
+      - name: Copy custom configuration without overwriting live-build config
         run: |
-          cp -a config/. build/config/
+          if [ -d config/includes.chroot ]; then
+            mkdir -p build/config/includes.chroot
+            cp -a config/includes.chroot/. build/config/includes.chroot/
+          fi
+          if [ -d config/package-lists ]; then
+            mkdir -p build/config/package-lists
+            cp -a config/package-lists/. build/config/package-lists/
+          fi
+          if [ -d config/hooks ]; then
+            mkdir -p build/config/hooks
+            cp -a config/hooks/. build/config/hooks/
+          fi
+          if [ -d config/binary ]; then
+            mkdir -p build/config/binary
+            cp -a config/binary/. build/config/binary/
+          fi
+          if [ -d config/installer ]; then
+            mkdir -p build/config/installer
+            cp -a config/installer/. build/config/installer/
+          fi
 
       - name: Install RebuiltTux pkg scaffold
         run: |
@@ -85,9 +104,9 @@ jobs:
 
       - name: Rename ISO
         run: |
-          ISO=$(find build -maxdepth 1 -type f -name '*.iso' -print -quit)
+          ISO=$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)
           test -n "$ISO"
-          cp "$ISO" RebuiltTux-Kali-1.1-amd64.iso
+          cp "$ISO" ../RebuiltTux-Kali-1.1-amd64.iso
 
       - name: Generate checksum
         run: sha256sum RebuiltTux-Kali-1.1-amd64.iso > RebuiltTux-Kali-1.1-amd64.iso.sha256
