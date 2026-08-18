@@ -26,37 +26,35 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            git \
-            curl \
-            ca-certificates \
-            xorriso \
-            grub-pc-bin \
-            grub-efi-amd64-bin \
-            grub-efi-amd64-signed \
-            shim-signed \
-            mtools \
-            simple-cdd
+            git curl ca-certificates \
+            build-essential devscripts dpkg-dev \
+            debhelper fakeroot quilt \
+            xorriso grub-pc-bin grub-efi-amd64-bin \
+            grub-efi-amd64-signed shim-signed mtools simple-cdd
 
-      - name: Obtain Kali debian-cd and installer dependencies
+      - name: Build and install Kali debian-cd package
         run: |
           git clone --depth 1 https://gitlab.com/kalilinux/packages/debian-cd.git kali-debian-cd
           cd kali-debian-cd
-          sudo make install
-          cd ..
-          if dpkg --compare-versions "$(dpkg-query -W -f='${Version}' debian-cd 2>/dev/null || echo 0)" lt "3.2.1+kali1"; then
-            echo "Installed debian-cd is too old: $(dpkg-query -W -f='${Version}' debian-cd 2>/dev/null || echo missing)"
-            exit 1
+          if [ -f debian/changelog ]; then
+            head -n 5 debian/changelog
           fi
-          sudo apt-get install -y --no-install-recommends debian-cd
-
-      - name: Clone official Kali installer build scripts
-        run: |
-          git clone --depth 1 https://gitlab.com/kalilinux/build-scripts/kali-installer.git kali-installer
+          dpkg-buildpackage -us -uc -b
+          cd ..
+          DEB=$(find . -maxdepth 1 -type f -name 'debian-cd_*.deb' -print -quit)
+          test -n "$DEB"
+          sudo dpkg -i "$DEB"
+          sudo apt-get -f install -y
 
       - name: Verify Kali debian-cd version
         run: |
           dpkg-query -W -f='debian-cd=${Version}\n' debian-cd
-          dpkg --compare-versions "$(dpkg-query -W -f='${Version}' debian-cd)" ge "3.2.1+kali1"
+          VERSION=$(dpkg-query -W -f='${Version}' debian-cd)
+          dpkg --compare-versions "$VERSION" ge "3.2.1+kali1"
+
+      - name: Clone official Kali installer build scripts
+        run: |
+          git clone --depth 1 https://gitlab.com/kalilinux/build-scripts/kali-installer.git kali-installer
 
       - name: Configure RebuiltTux netinstaller build
         working-directory: kali-installer
@@ -70,22 +68,6 @@ jobs:
           ca-certificates
           sudo
           EOF
-
-          cat > simple-cdd/profiles/rebuilttux.postinst <<'EOF'
-          #!/bin/sh
-          set -e
-
-          install -d -m 0755 /usr/share/doc/rebuilttux-kali/pkg
-
-          if [ -f /cdrom/rebuilttux/pkg/README.md ]; then
-            install -m 0644 /cdrom/rebuilttux/pkg/README.md /usr/share/doc/rebuilttux-kali/pkg/README.md
-          fi
-
-          if [ -f /cdrom/rebuilttux/pkg/pkg ]; then
-            install -m 0755 /cdrom/rebuilttux/pkg/pkg /usr/bin/pkg
-          fi
-          EOF
-          chmod +x simple-cdd/profiles/rebuilttux.postinst
 
           mkdir -p simple-cdd/local_packages/rebuilttux/pkg
           cp ../config/includes.chroot/usr/bin/pkg simple-cdd/local_packages/rebuilttux/pkg/pkg
