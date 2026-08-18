@@ -1,0 +1,10 @@
+RebuiltTux Kali 1.1 Installer
+
+Welcome to the RebuiltTux Kali network installer.
+
+This installer is an independent community project based on the Kali Linux ecosystem.
+It downloads the selected system packages over the network during installation.
+
+Project: RebuiltTux Kali
+Version: 1.1
+Architecture: amd64
