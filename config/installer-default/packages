@@ -1,0 +1,16 @@
+# RebuiltTux Kali installer package pool
+# Keep this list intentionally small for the netinstaller.
+kali-archive-keyring
+git
+curl
+sudo
+
+# General-purpose APT tooling
+apt
+apt-utils
+ca-certificates
+
+# Desktop baseline
+xfce4
+xfce4-goodies
+lightdm
