@@ -52,6 +52,7 @@ jobs:
             --apt-indices false \
             --binary-images iso-hybrid \
             --bootappend-live 'boot=live components'
+          sudo chown -R "$USER":"$USER" config
 
       - name: Configure minimal package set
         run: |
