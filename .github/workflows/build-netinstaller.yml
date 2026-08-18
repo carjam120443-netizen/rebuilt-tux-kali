@@ -22,13 +22,11 @@ jobs:
       - name: Check out RebuiltTux repository
         uses: actions/checkout@v4
 
-      - name: Install Kali installer build dependencies
+      - name: Install base build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             git \
-            simple-cdd \
-            debian-cd \
             curl \
             ca-certificates \
             xorriso \
@@ -36,19 +34,35 @@ jobs:
             grub-efi-amd64-bin \
             grub-efi-amd64-signed \
             shim-signed \
-            mtools
+            mtools \
+            simple-cdd
+
+      - name: Obtain Kali debian-cd and installer dependencies
+        run: |
+          git clone --depth 1 https://gitlab.com/kalilinux/packages/debian-cd.git kali-debian-cd
+          cd kali-debian-cd
+          sudo make install
+          cd ..
+          if dpkg --compare-versions "$(dpkg-query -W -f='${Version}' debian-cd 2>/dev/null || echo 0)" lt "3.2.1+kali1"; then
+            echo "Installed debian-cd is too old: $(dpkg-query -W -f='${Version}' debian-cd 2>/dev/null || echo missing)"
+            exit 1
+          fi
+          sudo apt-get install -y --no-install-recommends debian-cd
 
       - name: Clone official Kali installer build scripts
         run: |
           git clone --depth 1 https://gitlab.com/kalilinux/build-scripts/kali-installer.git kali-installer
+
+      - name: Verify Kali debian-cd version
+        run: |
+          dpkg-query -W -f='debian-cd=${Version}\n' debian-cd
+          dpkg --compare-versions "$(dpkg-query -W -f='${Version}' debian-cd)" ge "3.2.1+kali1"
 
       - name: Configure RebuiltTux netinstaller build
         working-directory: kali-installer
         run: |
           echo 'http://http.kali.org/kali' > .mirror
 
-          # Keep the upstream Kali installer configuration intact and add
-          # RebuiltTux-specific files only where the installer supports them.
           mkdir -p simple-cdd/profiles/rebuilttux
 
           cat > simple-cdd/profiles/rebuilttux.packages <<'EOF'
@@ -73,13 +87,13 @@ jobs:
           EOF
           chmod +x simple-cdd/profiles/rebuilttux.postinst
 
-          # Place the RebuiltTux pkg files on the installer media.
           mkdir -p simple-cdd/local_packages/rebuilttux/pkg
           cp ../config/includes.chroot/usr/bin/pkg simple-cdd/local_packages/rebuilttux/pkg/pkg
           cp ../config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md simple-cdd/local_packages/rebuilttux/pkg/README.md
 
-          # Add the RebuiltTux profile to the existing installer profile set.
-          printf '\nrebuilttux\n' >> simple-cdd/profiles/kali.profiles
+          if ! grep -qx 'rebuilttux' simple-cdd/profiles/kali.profiles; then
+            printf 'rebuilttux\n' >> simple-cdd/profiles/kali.profiles
+          fi
 
       - name: Build Kali netinstaller
         working-directory: kali-installer
@@ -88,7 +102,7 @@ jobs:
 
       - name: Locate generated ISO
         run: |
-          ISO=$(find kali-installer/images -maxdepth 2 -type f -name '*.iso' -print -quit)
+          ISO=$(find kali-installer/images -maxdepth 3 -type f -name '*.iso' -print -quit)
           test -n "$ISO"
           cp "$ISO" RebuiltTux-Kali-1.1-amd64-netinst.iso
 
@@ -96,9 +110,10 @@ jobs:
         run: sha256sum RebuiltTux-Kali-1.1-amd64-netinst.iso > RebuiltTux-Kali-1.1-amd64-netinst.iso.sha256
 
       - name: Upload ISO and build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RebuiltTux-Kali-1.1-amd64-netinst
+          name: RebuiltTux-Kali-1.1-amd64-netinst-build
           path: |
             RebuiltTux-Kali-1.1-amd64-netinst.iso
             RebuiltTux-Kali-1.1-amd64-netinst.iso.sha256
