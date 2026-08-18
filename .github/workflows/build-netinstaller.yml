@@ -16,110 +16,91 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
-      - name: Check out repository
+      - name: Check out RebuiltTux repository
         uses: actions/checkout@v4
 
-      - name: Install live-build and build dependencies
+      - name: Install Kali installer build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            live-build \
-            debootstrap \
+            git \
+            simple-cdd \
+            debian-cd \
+            curl \
+            ca-certificates \
             xorriso \
-            squashfs-tools \
             grub-pc-bin \
             grub-efi-amd64-bin \
             grub-efi-amd64-signed \
             shim-signed \
-            mtools \
-            dosfstools
+            mtools
 
-      - name: Prepare live-build configuration
+      - name: Clone official Kali installer build scripts
         run: |
-          mkdir -p build
-          cd build
-          sudo lb config \
-            --mode debian \
-            --distribution kali-rolling \
-            --architectures amd64 \
-            --archive-areas 'main contrib non-free non-free-firmware' \
-            --mirror-bootstrap 'http://http.kali.org/kali' \
-            --mirror-chroot 'http://http.kali.org/kali' \
-            --mirror-binary 'http://http.kali.org/kali' \
-            --apt-indices false \
-            --binary-images iso-hybrid \
-            --bootappend-live 'boot=live components'
-          sudo chown -R "$USER":"$USER" config
+          git clone --depth 1 https://gitlab.com/kalilinux/build-scripts/kali-installer.git kali-installer
 
-      - name: Configure minimal package set
+      - name: Configure RebuiltTux netinstaller build
+        working-directory: kali-installer
         run: |
-          mkdir -p build/config/package-lists
-          cat > build/config/package-lists/rebuilt-tux-kali.list.chroot <<'EOF'
+          echo 'http://http.kali.org/kali' > .mirror
+
+          # Keep the upstream Kali installer configuration intact and add
+          # RebuiltTux-specific files only where the installer supports them.
+          mkdir -p simple-cdd/profiles/rebuilttux
+
+          cat > simple-cdd/profiles/rebuilttux.packages <<'EOF'
           apt
           ca-certificates
-          init-system-helpers
-          live-boot
-          linux-image-amd64
-          openssh-client
           sudo
           EOF
 
-      - name: Copy custom configuration without overwriting live-build config
-        run: |
-          if [ -d config/includes.chroot ]; then
-            mkdir -p build/config/includes.chroot
-            cp -a config/includes.chroot/. build/config/includes.chroot/
-          fi
-          if [ -d config/package-lists ]; then
-            mkdir -p build/config/package-lists
-            cp -a config/package-lists/. build/config/package-lists/
-          fi
-          if [ -d config/hooks ]; then
-            mkdir -p build/config/hooks
-            cp -a config/hooks/. build/config/hooks/
-          fi
-          if [ -d config/binary ]; then
-            mkdir -p build/config/binary
-            cp -a config/binary/. build/config/binary/
-          fi
-          if [ -d config/installer ]; then
-            mkdir -p build/config/installer
-            cp -a config/installer/. build/config/installer/
+          cat > simple-cdd/profiles/rebuilttux.postinst <<'EOF'
+          #!/bin/sh
+          set -e
+
+          install -d -m 0755 /usr/share/doc/rebuilttux-kali/pkg
+
+          if [ -f /cdrom/rebuilttux/pkg/README.md ]; then
+            install -m 0644 /cdrom/rebuilttux/pkg/README.md /usr/share/doc/rebuilttux-kali/pkg/README.md
           fi
 
-      - name: Install RebuiltTux pkg scaffold
-        run: |
-          mkdir -p build/config/includes.chroot/usr/bin
-          mkdir -p build/config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg
-          cp config/includes.chroot/usr/bin/pkg build/config/includes.chroot/usr/bin/pkg
-          cp config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md build/config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md
-          chmod +x build/config/includes.chroot/usr/bin/pkg
+          if [ -f /cdrom/rebuilttux/pkg/pkg ]; then
+            install -m 0755 /cdrom/rebuilttux/pkg/pkg /usr/bin/pkg
+          fi
+          EOF
+          chmod +x simple-cdd/profiles/rebuilttux.postinst
 
-      - name: Build ISO
-        working-directory: build
-        run: |
-          sudo lb build 2>&1 | tee ../build.log
+          # Place the RebuiltTux pkg files on the installer media.
+          mkdir -p simple-cdd/local_packages/rebuilttux/pkg
+          cp ../config/includes.chroot/usr/bin/pkg simple-cdd/local_packages/rebuilttux/pkg/pkg
+          cp ../config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md simple-cdd/local_packages/rebuilttux/pkg/README.md
 
-      - name: Fix generated file ownership
-        if: always()
-        run: sudo chown -R "$USER":"$USER" build || true
+          # Add the RebuiltTux profile to the existing installer profile set.
+          printf '\nrebuilttux\n' >> simple-cdd/profiles/kali.profiles
 
-      - name: Rename ISO
+      - name: Build Kali netinstaller
+        working-directory: kali-installer
         run: |
-          ISO=$(find build -maxdepth 1 -type f -name '*.iso' -print -quit)
+          sudo ./build.sh --arch amd64 --variant netinst --verbose 2>&1 | tee ../build.log
+
+      - name: Locate generated ISO
+        run: |
+          ISO=$(find kali-installer/images -maxdepth 2 -type f -name '*.iso' -print -quit)
           test -n "$ISO"
-          cp "$ISO" RebuiltTux-Kali-1.1-amd64.iso
+          cp "$ISO" RebuiltTux-Kali-1.1-amd64-netinst.iso
 
       - name: Generate checksum
-        run: sha256sum RebuiltTux-Kali-1.1-amd64.iso > RebuiltTux-Kali-1.1-amd64.iso.sha256
+        run: sha256sum RebuiltTux-Kali-1.1-amd64-netinst.iso > RebuiltTux-Kali-1.1-amd64-netinst.iso.sha256
 
-      - name: Upload ISO artifact
-        if: always()
+      - name: Upload ISO and build log
         uses: actions/upload-artifact@v4
         with:
-          name: RebuiltTux-Kali-1.1-build-logs
-          path: build.log
+          name: RebuiltTux-Kali-1.1-amd64-netinst
+          path: |
+            RebuiltTux-Kali-1.1-amd64-netinst.iso
+            RebuiltTux-Kali-1.1-amd64-netinst.iso.sha256
+            build.log
           retention-days: 14
