@@ -41,7 +41,7 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          lb config \
+          sudo lb config \
             --mode debian \
             --distribution kali-rolling \
             --architectures amd64 \
@@ -100,23 +100,25 @@ jobs:
       - name: Build ISO
         working-directory: build
         run: |
-          lb build 2>&1 | tee ../build.log
+          sudo lb build 2>&1 | tee ../build.log
+
+      - name: Fix generated file ownership
+        if: always()
+        run: sudo chown -R "$USER":"$USER" build || true
 
       - name: Rename ISO
         run: |
-          ISO=$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)
+          ISO=$(find build -maxdepth 1 -type f -name '*.iso' -print -quit)
           test -n "$ISO"
-          cp "$ISO" ../RebuiltTux-Kali-1.1-amd64.iso
+          cp "$ISO" RebuiltTux-Kali-1.1-amd64.iso
 
       - name: Generate checksum
         run: sha256sum RebuiltTux-Kali-1.1-amd64.iso > RebuiltTux-Kali-1.1-amd64.iso.sha256
 
       - name: Upload ISO artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RebuiltTux-Kali-1.1-amd64
-          path: |
-            RebuiltTux-Kali-1.1-amd64.iso
-            RebuiltTux-Kali-1.1-amd64.iso.sha256
-            build.log
+          name: RebuiltTux-Kali-1.1-build-logs
+          path: build.log
           retention-days: 14
