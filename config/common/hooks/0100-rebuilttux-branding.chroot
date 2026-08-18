@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+# Mark the target filesystem as RebuiltTux Kali during the image build.
+# Keep this hook small so it remains compatible with future installer builds.
+install -d /usr/share/rebuilttux-kali
+printf '%s\n' 'RebuiltTux Kali 1.1' > /usr/share/rebuilttux-kali/version
+printf '%s\n' 'Independent community Kali Linux derivative.' > /usr/share/rebuilttux-kali/README
+
+exit 0
