@@ -50,13 +50,33 @@ jobs:
             --mirror-chroot 'http://http.kali.org/kali' \
             --mirror-binary 'http://http.kali.org/kali' \
             --apt-indices false \
-            --debootstrap-options '--variant=minbase' \
             --binary-images iso-hybrid \
             --bootappend-live 'boot=live components'
+
+      - name: Configure minimal netinstaller package set
+        run: |
+          mkdir -p build/config/package-lists
+          cat > build/config/package-lists/rebuilt-tux-kali.list.chroot <<'EOF'
+          apt
+          ca-certificates
+          init-system-helpers
+          live-boot
+          linux-image-amd64
+          openssh-client
+          sudo
+          EOF
 
       - name: Copy RebuiltTux configuration
         run: |
           cp -a config/. build/config/
+
+      - name: Install RebuiltTux pkg scaffold
+        run: |
+          mkdir -p build/config/includes.chroot/usr/bin
+          mkdir -p build/config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg
+          cp config/includes.chroot/usr/bin/pkg build/config/includes.chroot/usr/bin/pkg
+          cp config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md build/config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md
+          chmod +x build/config/includes.chroot/usr/bin/pkg
 
       - name: Build ISO
         working-directory: build
