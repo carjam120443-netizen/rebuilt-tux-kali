@@ -3,4 +3,4 @@ RebuiltTux Kali 1.1
 Independent Kali Linux derivative project.
 APT-based. Netinstaller target.
 
-Temporary development artwork: Kali Linux ASCII branding.
+Fetch logo: RebuiltTux custom ASCII artwork.
