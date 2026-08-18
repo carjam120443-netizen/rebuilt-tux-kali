@@ -1,0 +1,83 @@
+name: Build RebuiltTux Kali Netinstaller
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'config/**'
+      - 'pkg/**'
+      - '.github/workflows/build-netinstaller.yml'
+      - 'README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install live-build and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            live-build \
+            debootstrap \
+            xorriso \
+            squashfs-tools \
+            grub-pc-bin \
+            grub-efi-amd64-bin \
+            grub-efi-amd64-signed \
+            shim-signed \
+            mtools \
+            dosfstools
+
+      - name: Prepare live-build configuration
+        run: |
+          mkdir -p build
+          cd build
+          lb config \
+            --mode debian \
+            --distribution kali-rolling \
+            --architectures amd64 \
+            --archive-areas 'main contrib non-free non-free-firmware' \
+            --mirror-bootstrap 'http://http.kali.org/kali' \
+            --mirror-chroot 'http://http.kali.org/kali' \
+            --mirror-binary 'http://http.kali.org/kali' \
+            --apt-indices false \
+            --debootstrap-options '--variant=minbase' \
+            --binary-images iso-hybrid \
+            --bootappend-live 'boot=live components'
+
+      - name: Copy RebuiltTux configuration
+        run: |
+          cp -a config/. build/config/
+
+      - name: Build ISO
+        working-directory: build
+        run: |
+          lb build 2>&1 | tee ../build.log
+
+      - name: Rename ISO
+        run: |
+          ISO=$(find build -maxdepth 1 -type f -name '*.iso' -print -quit)
+          test -n "$ISO"
+          cp "$ISO" RebuiltTux-Kali-1.1-amd64.iso
+
+      - name: Generate checksum
+        run: sha256sum RebuiltTux-Kali-1.1-amd64.iso > RebuiltTux-Kali-1.1-amd64.iso.sha256
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RebuiltTux-Kali-1.1-amd64
+          path: |
+            RebuiltTux-Kali-1.1-amd64.iso
+            RebuiltTux-Kali-1.1-amd64.iso.sha256
+            build.log
+          retention-days: 14
