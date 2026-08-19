@@ -42,15 +42,21 @@ jobs:
 
       - name: Prepare isolated GPG environment
         run: |
-          sudo mkdir -p /root/.gnupg
-          sudo chmod 700 /root/.gnupg
+          sudo rm -rf /root/.gnupg
+          sudo install -d -m 700 /root/.gnupg
+          sudo install -d -m 700 /run/user/0
           sudo tee /root/.gnupg/gpg-agent.conf >/dev/null <<'EOF'
           allow-loopback-pinentry
+          use-standard-socket
           default-cache-ttl 300
           max-cache-ttl 600
           EOF
+          sudo chown -R root:root /root/.gnupg
+          sudo chmod 700 /root/.gnupg
           sudo gpgconf --kill gpg-agent || true
-          sudo gpgconf --launch gpg-agent
+          sudo -H env GNUPGHOME=/root/.gnupg XDG_RUNTIME_DIR=/run/user/0 gpg-agent --daemon --homedir /root/.gnupg --allow-loopback-pinentry >/tmp/gpg-agent.log 2>&1 || true
+          sudo -H env GNUPGHOME=/root/.gnupg XDG_RUNTIME_DIR=/run/user/0 gpgconf --launch gpg-agent
+          sudo -H env GNUPGHOME=/root/.gnupg XDG_RUNTIME_DIR=/run/user/0 gpg-connect-agent /bye
 
       - name: Build and install Kali debian-cd package
         run: |
@@ -100,7 +106,10 @@ jobs:
       - name: Build Kali netinstaller
         working-directory: kali-installer
         run: |
-          sudo -H env GNUPGHOME=/root/.gnupg GPG_TTY=/dev/null \
+          sudo -H env \
+            GNUPGHOME=/root/.gnupg \
+            XDG_RUNTIME_DIR=/run/user/0 \
+            GPG_TTY=/dev/null \
             ./build.sh --arch amd64 --variant netinst --verbose 2>&1 | tee ../build.log
 
       - name: Locate generated ISO
