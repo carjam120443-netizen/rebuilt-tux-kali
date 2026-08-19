@@ -85,7 +85,10 @@ jobs:
       - name: Configure RebuiltTux netinstaller build
         working-directory: kali-installer
         run: |
-          echo 'http://http.kali.org/kali' > .mirror
+          # Use a direct Kali CDN endpoint instead of the rotating http.kali.org
+          # redirector. This also makes the retry below useful when a mirror is
+          # temporarily out of sync with the signed InRelease metadata.
+          echo 'https://kali.download/kali' > .mirror
 
           mkdir -p simple-cdd/profiles/rebuilttux
 
@@ -99,6 +102,10 @@ jobs:
           cp ../config/includes.chroot/usr/bin/pkg simple-cdd/local_packages/rebuilttux/pkg/pkg
           cp ../config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md simple-cdd/local_packages/rebuilttux/pkg/README.md
 
+          # The current Kali installer tree does not necessarily ship a
+          # kali.profiles file, so create it if needed before registering the
+          # RebuiltTux profile.
+          touch simple-cdd/profiles/kali.profiles
           if ! grep -qx 'rebuilttux' simple-cdd/profiles/kali.profiles; then
             printf 'rebuilttux\n' >> simple-cdd/profiles/kali.profiles
           fi
@@ -106,11 +113,33 @@ jobs:
       - name: Build Kali netinstaller
         working-directory: kali-installer
         run: |
-          sudo -H env \
-            GNUPGHOME=/root/.gnupg \
-            XDG_RUNTIME_DIR=/run/user/0 \
-            GPG_TTY=/dev/null \
-            ./build.sh --arch amd64 --variant netinst --verbose 2>&1 | tee ../build.log
+          set -o pipefail
+
+          # Kali rolling mirrors can briefly disagree with their signed
+          # InRelease metadata while synchronizing. reprepro correctly rejects
+          # that situation as a checksum mismatch. Retry from a clean Simple-
+          # CDD mirror cache rather than accepting mismatched package data.
+          for attempt in 1 2 3 4 5; do
+            echo "=== RebuiltTux Kali netinstaller build attempt $attempt/5 ==="
+            rm -rf simple-cdd/tmp simple-cdd/debian-cd
+
+            if sudo -H env \
+              GNUPGHOME=/root/.gnupg \
+              XDG_RUNTIME_DIR=/run/user/0 \
+              GPG_TTY=/dev/null \
+              ./build.sh --arch amd64 --variant netinst --verbose 2>&1 | tee ../build.log; then
+              echo "Kali netinstaller build succeeded on attempt $attempt"
+              exit 0
+            fi
+
+            echo "Build attempt $attempt failed; the Kali mirror may still be synchronizing."
+            if [ "$attempt" -lt 5 ]; then
+              sleep 10
+            fi
+          done
+
+          echo "All Kali netinstaller build attempts failed."
+          exit 1
 
       - name: Locate generated ISO
         run: |
