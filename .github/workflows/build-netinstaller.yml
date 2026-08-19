@@ -72,6 +72,22 @@ jobs:
           sudo dpkg -i "$DEB"
           sudo apt-get -f install -y
 
+      - name: Disable Jigdo generation for netinstaller builds
+        run: |
+          # Ubuntu's xorriso package is built without libjte. Kali's
+          # debian-cd configuration normally asks xorriso for Jigdo output,
+          # which causes: "Jigdo Template Extraction was not enabled at
+          # compile time". A netinstaller only needs the ISO, so disable
+          # Jigdo generation rather than rebuilding xorriso with libjte.
+          sudo tee -a /etc/debian-cd/conf.sh >/dev/null <<'EOF'
+          
+          # RebuiltTux CI: netinstaller builds do not need Jigdo files.
+          export MAXJIGDOS=0
+          EOF
+
+          echo 'Effective debian-cd Jigdo configuration:'
+          sudo grep -nE 'MAXISOS|MAXJIGDOS|JIGDO_OPTS' /etc/debian-cd/conf.sh || true
+
       - name: Verify Kali debian-cd version
         run: |
           dpkg-query -W -f='debian-cd=${Version}\n' debian-cd
@@ -127,6 +143,7 @@ jobs:
               GNUPGHOME=/root/.gnupg \
               XDG_RUNTIME_DIR=/run/user/0 \
               GPG_TTY=/dev/null \
+              MAXJIGDOS=0 \
               ./build.sh --arch amd64 --variant netinst --verbose 2>&1 | tee ../build.log; then
               echo "Kali netinstaller build succeeded on attempt $attempt"
               exit 0
