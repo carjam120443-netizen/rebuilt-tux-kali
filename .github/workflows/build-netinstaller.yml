@@ -26,7 +26,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            git curl ca-certificates \
+            git curl ca-certificates gnupg2 gpg-agent pinentry-curses \
             build-essential devscripts dpkg-dev \
             debhelper fakeroot quilt \
             xorriso grub-pc-bin grub-efi-amd64-bin \
@@ -38,7 +38,19 @@ jobs:
             https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
           sudo dpkg -i /tmp/kali-archive-keyring.deb
           test -s /usr/share/keyrings/kali-archive-keyring.gpg
-          gpg --no-default-keyring --keyring /usr/share/keyrings/kali-archive-keyring.gpg --list-keys
+          sudo gpg --batch --no-default-keyring --keyring /usr/share/keyrings/kali-archive-keyring.gpg --list-keys
+
+      - name: Prepare isolated GPG environment
+        run: |
+          sudo mkdir -p /root/.gnupg
+          sudo chmod 700 /root/.gnupg
+          sudo tee /root/.gnupg/gpg-agent.conf >/dev/null <<'EOF'
+          allow-loopback-pinentry
+          default-cache-ttl 300
+          max-cache-ttl 600
+          EOF
+          sudo gpgconf --kill gpg-agent || true
+          sudo gpgconf --launch gpg-agent
 
       - name: Build and install Kali debian-cd package
         run: |
@@ -88,7 +100,8 @@ jobs:
       - name: Build Kali netinstaller
         working-directory: kali-installer
         run: |
-          sudo ./build.sh --arch amd64 --variant netinst --verbose 2>&1 | tee ../build.log
+          sudo -H env GNUPGHOME=/root/.gnupg GPG_TTY=/dev/null \
+            ./build.sh --arch amd64 --variant netinst --verbose 2>&1 | tee ../build.log
 
       - name: Locate generated ISO
         run: |
