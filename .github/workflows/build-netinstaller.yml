@@ -32,6 +32,14 @@ jobs:
             xorriso grub-pc-bin grub-efi-amd64-bin \
             grub-efi-amd64-signed shim-signed mtools simple-cdd
 
+      - name: Install current Kali archive keyring
+        run: |
+          curl -fsSL -o /tmp/kali-archive-keyring.deb \
+            https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
+          sudo dpkg -i /tmp/kali-archive-keyring.deb
+          test -s /usr/share/keyrings/kali-archive-keyring.gpg
+          gpg --no-default-keyring --keyring /usr/share/keyrings/kali-archive-keyring.gpg --list-keys
+
       - name: Build and install Kali debian-cd package
         run: |
           git clone --depth 1 https://gitlab.com/kalilinux/packages/debian-cd.git kali-debian-cd
