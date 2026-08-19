@@ -85,9 +85,6 @@ jobs:
       - name: Configure RebuiltTux netinstaller build
         working-directory: kali-installer
         run: |
-          # Use a direct Kali CDN endpoint instead of the rotating http.kali.org
-          # redirector. This also makes the retry below useful when a mirror is
-          # temporarily out of sync with the signed InRelease metadata.
           echo 'https://kali.download/kali' > .mirror
 
           mkdir -p simple-cdd/profiles/rebuilttux
@@ -102,9 +99,6 @@ jobs:
           cp ../config/includes.chroot/usr/bin/pkg simple-cdd/local_packages/rebuilttux/pkg/pkg
           cp ../config/includes.chroot/usr/share/doc/rebuilttux-kali/pkg/README.md simple-cdd/local_packages/rebuilttux/pkg/README.md
 
-          # The current Kali installer tree does not necessarily ship a
-          # kali.profiles file, so create it if needed before registering the
-          # RebuiltTux profile.
           touch simple-cdd/profiles/kali.profiles
           if ! grep -qx 'rebuilttux' simple-cdd/profiles/kali.profiles; then
             printf 'rebuilttux\n' >> simple-cdd/profiles/kali.profiles
@@ -115,13 +109,19 @@ jobs:
         run: |
           set -o pipefail
 
-          # Kali rolling mirrors can briefly disagree with their signed
-          # InRelease metadata while synchronizing. reprepro correctly rejects
-          # that situation as a checksum mismatch. Retry from a clean Simple-
-          # CDD mirror cache rather than accepting mismatched package data.
           for attempt in 1 2 3 4 5; do
             echo "=== RebuiltTux Kali netinstaller build attempt $attempt/5 ==="
-            rm -rf simple-cdd/tmp simple-cdd/debian-cd
+
+            # build.sh runs as root and can leave simple-cdd/debian-cd owned by
+            # root. Clean it with sudo so a failed mirror-sync attempt can be
+            # retried without Permission denied errors.
+            sudo rm -rf simple-cdd/tmp simple-cdd/debian-cd
+
+            # Also repair ownership of the generated working tree after a
+            # failed attempt. This keeps diagnostics and subsequent cleanup
+            # accessible to the GitHub Actions runner.
+            sudo chown -R "$(id -u):$(id -g)" simple-cdd 2>/dev/null || true
+            sudo rm -rf simple-cdd/tmp simple-cdd/debian-cd
 
             if sudo -H env \
               GNUPGHOME=/root/.gnupg \
@@ -132,9 +132,9 @@ jobs:
               exit 0
             fi
 
-            echo "Build attempt $attempt failed; the Kali mirror may still be synchronizing."
+            echo "Build attempt $attempt failed; retrying after a clean mirror cache."
             if [ "$attempt" -lt 5 ]; then
-              sleep 10
+              sleep 15
             fi
           done
 
